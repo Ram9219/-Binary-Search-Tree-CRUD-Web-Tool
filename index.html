@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binary Search Tree CRUD Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .node {
+            transition: all 0.3s ease;
+        }
+        .node.inserting {
+            background-color: #86efac;
+        }
+        .node.deleting {
+            background-color: #fca5a5;
+        }
+        .node.found {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .arrow {
+            stroke: #4b5563;
+            stroke-width: 2;
+            marker-end: url(#arrowhead);
+        }
+        svg {
+            overflow: visible;
+        }
+        #pseudo-code {
+            font-family: 'Courier New', monospace;
+            background-color: #f3f4f6;
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">Binary Search Tree CRUD Tool</h1>
+            <p class="text-gray-600">Visualize and manipulate Binary Search Trees in real-time</p>
+        </header>
+
+        <div class="grid lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-md p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex space-x-2">
+                        <input type="number" id="nodeValue" placeholder="Enter a value" 
+                               class="px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <button id="insertBtn" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md transition">
+                            Insert
+                        </button>
+                        <button id="searchBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition">
+                            Search
+                        </button>
+                        <button id="deleteBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md transition">
+                            Delete
+                        </button>
+                        <button id="clearBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md transition">
+                            Clear
+                        </button>
+                    </div>
+                    <div>
+                        <span id="nodeCount" class="font-semibold">Nodes: 0</span>
+                    </div>
+                </div>
+
+                <div class="border-2 border-gray-200 rounded-lg p-4 min-h-[400px] relative">
+                    <div id="treeContainer" class="flex justify-center">
+                        <svg id="treeSVG" width="100%" height="400" style="min-width:600px; min-height:400px;"></svg>
+                    </div>
+                    <script>
+                        // Dynamically resize SVG based on tree depth and width
+                        function updateSVGSize(visualizer) {
+                            const root = visualizer.bst.root;
+                            if (!root) {
+                                visualizer.svg.setAttribute('height', 400);
+                                visualizer.svg.setAttribute('width', '100%');
+                                return;
+                            }
+                            // Calculate tree height and max width needed
+                            const depth = visualizer.bst.getHeight();
+                            const nodeRadius = visualizer.nodeRadius;
+                            const levelHeight = visualizer.levelHeight;
+                            // Estimate width: 2^(depth-1) * (nodeRadius*3) for spacing
+                            const maxNodes = Math.pow(2, depth - 1);
+                            const minWidth = 600;
+                            const width = Math.max(minWidth, maxNodes * nodeRadius * 3);
+                            const height = Math.max(400, depth * levelHeight + nodeRadius * 2);
+                            visualizer.svg.setAttribute('width', width);
+                            visualizer.svg.setAttribute('height', height);
+                        }
+
+                        // Patch BSTVisualizer.drawTree to call updateSVGSize
+                        document.addEventListener('DOMContentLoaded', () => {
+                            const svg = document.getElementById('treeSVG');
+                            const emptyTree = document.getElementById('emptyTree');
+                            const visualizer = new BSTVisualizer(svg, emptyTree);
+
+                            // Patch drawTree
+                            const origDrawTree = visualizer.drawTree.bind(visualizer);
+                            visualizer.drawTree = function() {
+                                updateSVGSize(this);
+                                origDrawTree();
+                            };
+
+                            // Re-attach event listeners as before
+                            document.getElementById('insertBtn').addEventListener('click', () => {
+                                const value = parseInt(document.getElementById('nodeValue').value);
+                                if (!isNaN(value)) {
+                                    visualizer.insert(value);
+                                    document.getElementById('nodeValue').value = '';
+                                }
+                            });
+
+                            document.getElementById('searchBtn').addEventListener('click', () => {
+                                const value = parseInt(document.getElementById('nodeValue').value);
+                                if (!isNaN(value)) {
+                                    visualizer.search(value);
+                                    document.getElementById('nodeValue').value = '';
+                                }
+                            });
+
+                            document.getElementById('deleteBtn').addEventListener('click', () => {
+                                const value = parseInt(document.getElementById('nodeValue').value);
+                                if (!isNaN(value)) {
+                                    visualizer.delete(value);
+                                    document.getElementById('nodeValue').value = '';
+                                }
+                            });
+
+                            document.getElementById('clearBtn').addEventListener('click', () => {
+                                visualizer.clear();
+                            });
+
+                            document.getElementById('nodeValue').addEventListener('keypress', (e) => {
+                                if (e.key === 'Enter') {
+                                    const value = parseInt(document.getElementById('nodeValue').value);
+                                    if (!isNaN(value)) {
+                                        visualizer.insert(value);
+                                        document.getElementById('nodeValue').value = '';
+                                    }
+                                }
+                            });
+                        });
+                    </script>
+                    <div id="emptyTree" class="absolute inset-0 flex items-center justify-center text-gray-400">
+                        Tree is empty. Insert some nodes to begin.
+                    </div>
+                </div>
+
+                <div id="operationStatus" class="mt-4 p-3 rounded-md hidden"></div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="bg-white rounded-xl shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">BST Operations</h2>
+                    <ul class="space-y-2">
+                        <li>
+                            <span class="font-medium">Insert:</span> Adds a new node while maintaining BST properties
+                        </li>
+                        <li>
+                            <span class="font-medium">Search:</span> Finds if a value exists in the tree
+                        </li>
+                        <li>
+                            <span class="font-medium">Delete:</span> Removes a node while maintaining BST properties
+                        </li>
+                        <li>
+                            <span class="font-medium">Clear:</span> Removes all nodes from the tree
+                        </li>
+                    </ul>
+                </div>
+
+
+                <div class="bg-white rounded-xl shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4 text-gray-800">Tree Properties</h2>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span>Height:</span>
+                            <span id="treeHeight">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Is BST:</span>
+                            <span id="isBST">Yes</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Balance Factor:</span>
+                            <span id="balanceFactor">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class BSTNode {
+            constructor(value) {
+                this.value = value;
+                this.left = null;
+                this.right = null;
+                this.x = 0;
+                this.y = 0;
+                this.highlighted = false;
+            }
+        }
+
+        class BST {
+            constructor() {
+                this.root = null;
+                this.nodeCount = 0;
+            }
+
+            insert(value) {
+                this.root = this._insert(this.root, value);
+            }
+
+            _insert(node, value) {
+                if (node === null) {
+                    this.nodeCount++;
+                    return new BSTNode(value);
+                }
+
+                if (value < node.value) {
+                    node.left = this._insert(node.left, value);
+                } else if (value > node.value) {
+                    node.right = this._insert(node.right, value);
+                }
+
+                return node;
+            }
+
+            search(value) {
+                return this._search(this.root, value);
+            }
+
+            _search(node, value) {
+                if (node === null) {
+                    return null;
+                }
+
+                if (value === node.value) {
+                    return node;
+                } else if (value < node.value) {
+                    return this._search(node.left, value);
+                } else {
+                    return this._search(node.right, value);
+                }
+            }
+
+            delete(value) {
+                this.root = this._delete(this.root, value);
+            }
+
+            _delete(node, value) {
+                if (node === null) {
+                    return null;
+                }
+
+                if (value < node.value) {
+                    node.left = this._delete(node.left, value);
+                } else if (value > node.value) {
+                    node.right = this._delete(node.right, value);
+                } else {
+                    if (node.left === null) {
+                        this.nodeCount--;
+                        return node.right;
+                    } else if (node.right === null) {
+                        this.nodeCount--;
+                        return node.left;
+                    }
+
+                    const minNode = this._findMin(node.right);
+                    node.value = minNode.value;
+                    node.right = this._delete(node.right, minNode.value);
+                }
+
+                return node;
+            }
+
+            _findMin(node) {
+                while (node.left !== null) {
+                    node = node.left;
+                }
+                return node;
+            }
+
+            clear() {
+                this.root = null;
+                this.nodeCount = 0;
+            }
+
+            getHeight(node = this.root) {
+                if (node === null) {
+                    return 0;
+                }
+                return 1 + Math.max(this.getHeight(node.left), this.getHeight(node.right));
+            }
+
+            isBST() {
+                return this._isBST(this.root, -Infinity, Infinity);
+            }
+
+            _isBST(node, min, max) {
+                if (node === null) {
+                    return true;
+                }
+
+                if (node.value <= min || node.value >= max) {
+                    return false;
+                }
+
+                return this._isBST(node.left, min, node.value) && 
+                       this._isBST(node.right, node.value, max);
+            }
+
+            getBalanceFactor(node = this.root) {
+                if (node === null) {
+                    return 0;
+                }
+                return this.getHeight(node.left) - this.getHeight(node.right);
+            }
+        }
+
+        // Visualization class
+        class BSTVisualizer {
+            constructor(svgElement, emptyTreeElement) {
+                this.bst = new BST();
+                this.svg = svgElement;
+                this.emptyTreeElement = emptyTreeElement;
+                this.nodeRadius = 25;
+                this.levelHeight = 80;
+                this.animationDuration = 800;
+                this.updateTreeProperties();
+            }
+
+            insert(value) {
+                if (isNaN(value)) {
+                    alert("Please enter a valid number");
+                    return false;
+                }
+
+                const existingNode = this.bst.search(value);
+                if (existingNode) {
+                    this.showStatus(`Node with value ${value} already exists`, "info");
+                    this.highlightNode(existingNode, "found");
+                    return false;
+                }
+
+                this.bst.insert(value);
+                this.showStatus(`Inserted node with value ${value}`, "success");
+                this.drawTree();
+                this.updateTreeProperties();
+                this.highlightNewNode(value);
+                return true;
+            }
+
+            highlightNewNode(value) {
+                const node = this.bst.search(value);
+                if (node) {
+                    this.highlightNode(node, "inserting");
+                    setTimeout(() => this.highlightNode(node, null), 1500);
+                }
+            }
+
+            search(value) {
+                if (isNaN(value)) {
+                    alert("Please enter a valid number");
+                    return false;
+                }
+
+                const node = this.bst.search(value);
+                if (node) {
+                    this.showStatus(`Found node with value ${value}`, "success");
+                    this.highlightNode(node, "found");
+                    setTimeout(() => this.highlightNode(node, null), 2000);
+                } else {
+                    this.showStatus(`Node with value ${value} not found`, "error");
+                }
+                return node !== null;
+            }
+
+            delete(value) {
+                if (isNaN(value)) {
+                    alert("Please enter a valid number");
+                    return false;
+                }
+
+                if (!this.bst.search(value)) {
+                    this.showStatus(`Node with value ${value} not found`, "error");
+                    return false;
+                }
+
+                this.bst.delete(value);
+                this.showStatus(`Deleted node with value ${value}`, "success");
+                this.drawTree();
+                this.updateTreeProperties();
+                return true;
+            }
+
+            clear() {
+                this.bst.clear();
+                this.showStatus("Tree cleared", "info");
+                this.drawTree();
+                this.updateTreeProperties();
+            }
+
+            drawTree() {
+                // Clear the SVG
+                this.svg.innerHTML = `
+                    <defs>
+                        <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                                refX="9" refY="3.5" orient="auto">
+                            <polygon points="0 0, 10 3.5, 0 7" fill="#4b5563" />
+                        </marker>
+                    </defs>
+                `;
+
+                if (this.bst.root === null) {
+                    this.emptyTreeElement.classList.remove('hidden');
+                    return;
+                }
+
+                this.emptyTreeElement.classList.add('hidden');
+
+                // Calculate positions
+                this.calculatePositions(this.bst.root, 
+                    this.svg.clientWidth / 2, 
+                    50, 
+                    this.svg.clientWidth / 4);
+
+                // Draw the tree
+                this.drawNode(this.bst.root);
+            }
+
+            calculatePositions(node, x, y, xOffset) {
+                if (node === null) return;
+
+                node.x = x;
+                node.y = y;
+
+                if (node.left !== null) {
+                    this.calculatePositions(node.left, x - xOffset, y + this.levelHeight, xOffset / 2);
+                }
+
+                if (node.right !== null) {
+                    this.calculatePositions(node.right, x + xOffset, y + this.levelHeight, xOffset / 2);
+                }
+            }
+
+            drawNode(node) {
+                if (node === null) return;
+
+                // Draw connections first (so nodes appear on top)
+                if (node.left !== null) {
+                    this.drawConnection(node, node.left);
+                }
+                if (node.right !== null) {
+                    this.drawConnection(node, node.right);
+                }
+
+                // Create node group
+                const nodeGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                nodeGroup.setAttribute("transform", `translate(${node.x}, ${node.y})`);
+
+                // Create circle (node)
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("r", this.nodeRadius);
+                circle.setAttribute("fill", "#fff");
+                circle.setAttribute("stroke", "#4b5563");
+                circle.setAttribute("stroke-width", "2");
+                circle.classList.add("node");
+
+                if (node.highlighted === "inserting") {
+                    circle.classList.add("inserting");
+                } else if (node.highlighted === "deleting") {
+                    circle.classList.add("deleting");
+                } else if (node.highlighted === "found") {
+                    circle.classList.add("found");
+                }
+
+                // Create text (value)
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute("text-anchor", "middle");
+                text.setAttribute("dominant-baseline", "middle");
+                text.setAttribute("fill", "#1f2937");
+                text.textContent = node.value;
+
+                // Append elements
+                nodeGroup.appendChild(circle);
+                nodeGroup.appendChild(text);
+                this.svg.appendChild(nodeGroup);
+
+                // Recursively draw children
+                this.drawNode(node.left);
+                this.drawNode(node.right);
+            }
+
+            drawConnection(parent, child) {
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", parent.x);
+                line.setAttribute("y1", parent.y + this.nodeRadius);
+                line.setAttribute("x2", child.x);
+                line.setAttribute("y2", child.y - this.nodeRadius);
+                line.classList.add("arrow");
+                this.svg.appendChild(line);
+            }
+
+            highlightNode(node, status) {
+                node.highlighted = status;
+                this.drawTree();
+            }
+
+            showStatus(message, type) {
+                const statusElement = document.getElementById('operationStatus');
+                statusElement.textContent = message;
+                statusElement.className = `mt-4 p-3 rounded-md`;
+                
+                const colors = {
+                    success: "bg-green-100 text-green-800",
+                    error: "bg-red-100 text-red-800",
+                    info: "bg-blue-100 text-blue-800"
+                };
+
+                statusElement.classList.add(...colors[type].split(' '));
+                statusElement.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    statusElement.classList.add('hidden');
+                }, 3000);
+            }
+
+            updateTreeProperties() {
+                document.getElementById('nodeCount').textContent = `Nodes: ${this.bst.nodeCount}`;
+                document.getElementById('treeHeight').textContent = this.bst.getHeight();
+                document.getElementById('isBST').textContent = this.bst.isBST() ? "Yes" : "No";
+                document.getElementById('balanceFactor').textContent = this.bst.getBalanceFactor();
+            }
+        }
+
+        // Initialize the application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const svg = document.getElementById('treeSVG');
+            const emptyTree = document.getElementById('emptyTree');
+            const visualizer = new BSTVisualizer(svg, emptyTree);
+
+            // Event listeners
+            document.getElementById('insertBtn').addEventListener('click', () => {
+                const value = parseInt(document.getElementById('nodeValue').value);
+                if (!isNaN(value)) {
+                    visualizer.insert(value);
+                    document.getElementById('nodeValue').value = '';
+                }
+            });
+
+            document.getElementById('searchBtn').addEventListener('click', () => {
+                const value = parseInt(document.getElementById('nodeValue').value);
+                if (!isNaN(value)) {
+                    visualizer.search(value);
+                    document.getElementById('nodeValue').value = '';
+                }
+            });
+
+            document.getElementById('deleteBtn').addEventListener('click', () => {
+                const value = parseInt(document.getElementById('nodeValue').value);
+                if (!isNaN(value)) {
+                    visualizer.delete(value);
+                    document.getElementById('nodeValue').value = '';
+                }
+            });
+
+            document.getElementById('clearBtn').addEventListener('click', () => {
+                visualizer.clear();
+            });
+
+            // Allow Enter key to trigger insert
+            document.getElementById('nodeValue').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const value = parseInt(document.getElementById('nodeValue').value);
+                    if (!isNaN(value)) {
+                        visualizer.insert(value);
+                        document.getElementById('nodeValue').value = '';
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+
